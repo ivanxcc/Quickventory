@@ -1,3 +1,4 @@
+#you will need to change some of the information depending on what you name you Excel workbook and where you save it
 import openpyxl
 
 # extract data from QR code
