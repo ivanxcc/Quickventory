@@ -14,7 +14,7 @@ QuickVentory is an inventory management application designed to streamline inven
 
 To get started follow these steps:
 
-1. Make sure you have Python installed on your system. Quickventory requires Python 3.6 or later.
+1. Make sure you have Python installed on your system. QuickVentory requires Python 3.6 or later.
 
 2. Install Kivy by running:
 
