@@ -19,6 +19,8 @@ from kivy.lang import Builder
 from kivy.uix.boxlayout import BoxLayout
 import time
 import cv2
+import pandas as pd
+from openpyxl import load_workbook
 from kivy.properties import StringProperty
 Builder.load_string('''
 <CameraClick>:
@@ -37,31 +39,60 @@ Builder.load_string('''
         size_hint_y: None
         height: '48dp'
         on_press: root.capture()
+    Button:
+        text: 'Export to Excel'
+        size_hint_y: None
+        height: '48dp'
+        on_press: root.export_to_excel()
     Label:
         id: label1
         text: root.data
-        height: '12dp'
+        height: '48dp'
 ''')
 
 
 class CameraClick(BoxLayout):
     data = StringProperty()
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.inventory = []
+
     def capture(self):
         '''
         Function to capture the images and give them the names
-        according to their captured time and date.
+        according to their captured time and date, and scan for QR codes.
         '''
         camera = self.ids['camera']
         timestr = time.strftime("%Y%m%d_%H%M%S")
         camera.export_to_png("IMG_{}.png".format(timestr))
         detect = cv2.QRCodeDetector()
         img = cv2.imread("IMG_{}.png".format(timestr))
-        data = detect.detectAndDecode(img)
-        self.data = data[0]
-        print("Captured")
+        data, bbox, _ = detect.detectAndDecode(img)
+        if data:
+            item_data = data.split(',')
+            if len(item_data) == 4: # Expected 4 data points
+                self.inventory.append(item_data)
+                self.data = f"Captured: {data}"
+            else:
+                self.data = "Invalid QR code format"
+        else:
+            self.data = "QR code not detected"
         print(self.data)
 
+    def export_to_excel(self):
+        '''
+        Exports the inventory data to an Excel file.
+        '''
+        if self.inventory:
+            df = pd.DataFrame(self.inventory, columns=['Item ID', 'Name', 'Description', 'Item Cost'])
+            # This needs to be changed based on local Excel file name
+            file_path = 'QuickInventory.xlsx'
+            with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                df.to_excel(writer, startrow=0, index=False)
+            self.data = 'Exported to {file_path}'
+        else:
+            self.data = 'No inventory to export' 
 
 class TestCamera(App):
 
