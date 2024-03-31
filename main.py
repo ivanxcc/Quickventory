@@ -13,22 +13,34 @@ throw an exception during the kv language processing.
 # from kivy.logger import Logger
 # import logging
 # Logger.setLevel(logging.TRACE)
-
+import os
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.image import Image
 import time
 import cv2
 import pandas as pd
-from openpyxl import load_workbook
 from kivy.properties import StringProperty
+from kivy import platform
+from androidstorage4kivy import SharedStorage
+
+if platform == "android":
+    is_android = True
+
 Builder.load_string('''
 <CameraClick>:
     orientation: 'vertical'
     Camera:
         id: camera
-        resolution: (640, 480)
         play: False
+        canvas.before:
+            PushMatrix
+            Rotate:
+                angle: -90
+                origin: self.center
+        canvas.after:
+            PopMatrix
     ToggleButton:
         text: 'Play'
         on_press: camera.play = not camera.play
@@ -57,6 +69,7 @@ class CameraClick(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.inventory = []
+        self.image = None
 
     def capture(self):
         '''
@@ -65,10 +78,22 @@ class CameraClick(BoxLayout):
         '''
         camera = self.ids['camera']
         timestr = time.strftime("%Y%m%d_%H%M%S")
-        camera.export_to_png("IMG_{}.png".format(timestr))
+        filename = "IMG_{}.png".format(timestr)
+        path = os.path.join(SharedStorage().get_cache_dir(),
+                            filename)
+
+        camera.export_to_png(path)
+        SharedStorage().copy_to_shared(private_file=path)
         detect = cv2.QRCodeDetector()
-        img = cv2.imread("IMG_{}.png".format(timestr))
+        img = cv2.imread(path)
+        # Update Previous Image Widget
+        if self.image: self.remove_widget(self.image)
+        self.image = Image(source=path)
+        self.add_widget(self.image)
+        # decode the qr code
         data, bbox, _ = detect.detectAndDecode(img)
+        print(bbox)
+
         if data:
             item_data = data.split(',')
             if len(item_data) == 4: # Expected 4 data points
@@ -76,8 +101,10 @@ class CameraClick(BoxLayout):
                 self.data = f"Captured: {data}"
             else:
                 self.data = "Invalid QR code format"
+
         else:
-            self.data = "QR code not detected"
+            self.data = "QR code not detected."
+
         print(self.data)
 
     def export_to_excel(self):
@@ -87,17 +114,29 @@ class CameraClick(BoxLayout):
         if self.inventory:
             df = pd.DataFrame(self.inventory, columns=['Item ID', 'Name', 'Description', 'Item Cost'])
             # This needs to be changed based on local Excel file name
-            file_path = 'QuickInventory.xlsx'
-            with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-                df.to_excel(writer, startrow=0, index=False)
-            self.data = 'Exported to {file_path}'
+            file_name = 'QuickInventory.xlsx'
+            file_path = os.path.join(SharedStorage().get_cache_dir(),
+                                     file_name)
+            # Check if sheet exists, if no create sheet, otherwise use "append" mode
+            if os.path.exists(file_path):
+                with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                    df.to_excel(writer, startrow=0, index=False)
+                self.data = f'Exported to {file_path}'
+                SharedStorage().copy_to_shared(private_file=file_path)
+            else:
+                with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
+                    df.to_excel(writer, startrow=0, index=False)
+                self.data = f'Exported to {file_path}'
+                SharedStorage().copy_to_shared(private_file=file_path)
         else:
-            self.data = 'No inventory to export' 
+            self.data = 'No inventory to export'
 
 class TestCamera(App):
 
     def build(self):
         return CameraClick()
+
+
 
 
 TestCamera().run()
